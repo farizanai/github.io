@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fariza Siddiqua</title>
+<meta name="description" content="Fariza Siddiqua — Ph.D. student at UTEP working on efficient AI, AI accelerators, and LLMs for chip design.">
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="index.html" class="active">Home</a><a href="blog.html">Blog</a><a href="misc.html">Misc</a>
+  <a class="brand" href="index.html">Fariza Siddiqua</a>
+</div></nav>
+<main>
+
+  <div class="intro">
+    <div class="text">
+      <h1>Fariza Siddiqua</h1>
+      <p>I am a Ph.D. student and Research Associate in <strong>Electrical and Computer Engineering</strong> at
+        <a href="https://www.utep.edu/">The University of Texas at El Paso</a>, advised by Dr. Md Maruf Hossain Shuvo.</p>
+      <p>My research sits where machine learning meets hardware: making AI models cheaper to run, designing
+        accelerators for them, and using large language models to help design chips. Lately I've been
+        measuring what compression <em>actually</em> saves in joules, not just parameters &mdash; see the
+        <a href="blog.html">blog</a> for interactive write-ups.</p>
+      <p>Before UTEP, I received my B.Sc. in Electrical and Electronic Engineering from
+        <a href="https://www.buet.ac.bd/">BUET</a> and worked as a Radio Service Specialist Engineer at Banglalink in Dhaka.</p>
+      <div class="links">
+        <a href="mailto:fariza.eee17.buet@gmail.com">Email</a><span class="sep">/</span>
+        <a href="#">CV</a><span class="sep">/</span>
+        <a href="https://github.com/fariza1743">GitHub</a><span class="sep">/</span>
+        <a href="https://www.linkedin.com/in/fariza-siddiqua-051513168/">LinkedIn</a>
+      </div>
+      <div class="muted" style="text-align:center;font-size:13.5px;margin-top:6px">fariza.eee17.buet [at] gmail [dot] com · El Paso, Texas</div>
+    </div>
+    <div class="photo"><img src="assets/photo.jpg" alt="Fariza Siddiqua"></div>
+  </div>
+
+  <div class="interests">
+    <span class="chip">Efficient AI</span><span class="chip">AI Accelerator Design</span><span class="chip">Algorithm–Hardware Co-design</span><span class="chip">LLMs in Chip Design</span>
+  </div>
+
+  <!-- Logos: put utep.png, banglalink.png and buet.png in assets/logos/. Until a file exists, the coloured tile is shown instead. -->
+  <div class="affil">
+    <div><div class="logo" style="background:#ff8200"><img src="assets/logos/utep.png" alt="UTEP logo" onerror="this.remove()"><span>UTEP</span></div><div class="lbl">UTEP</div>Ph.D., 2025 – Present</div>
+    <div><div class="logo" style="background:#e85a1c"><img src="assets/logos/banglalink.png" alt="Banglalink logo" onerror="this.remove()"><span>BL</span></div><div class="lbl">Banglalink</div>Engineer, 2023 – 2024</div>
+    <div><div class="logo" style="background:#8b1a1a"><img src="assets/logos/buet.png" alt="BUET logo" onerror="this.remove()"><span>BUET</span></div><div class="lbl">BUET</div>B.Sc., 2018 – 2023</div>
+  </div>
+
+
+  <h2>News</h2>
+  <ul class="news">
+    <li><span class="date">Nov 2026</span><span>New blog posts: <a href="blog/rtl-rewriting.html">can an LLM out-optimize Vivado?</a>, <a href="blog/resplin.html">inside ReSPLIN</a>, <a href="blog/capsvd-rank.html">the CapSVD rank rule</a>, and <a href="blog/conv-gru.html">an 80 kB insulin recommender</a>.</span></li>
+    <li><span class="date">Oct 2026</span><span>Finalist in the <strong>CSAW AI Hardware Attack Challenge 2026</strong> (ongoing).</span></li>
+    <li><span class="date">Jul 2026</span><span>Presented our Conv-GRU paper at <strong>IEEE EMBC 2026</strong> in Toronto.</span></li>
+    <li><span class="date">2026</span><span>Paper on embedded AI for subject-independent EEG BCIs accepted at <strong>IEEE MWSCAS 2026</strong>.</span></li>
+    <li><span class="date">Mar 2026</span><span><strong>1st place</strong>, <a href="https://last-x-workshop.github.io/competition.html">LAST-X LLM for Security Competition</a>.</span></li>
+    <li><span class="date">Nov 2025</span><span><strong>2nd place</strong>, <a href="https://www.linkedin.com/posts/kevingubbi_congratulations-to-our-competition-winners-activity-7402558944109666304-KpZv">ICCD 2025 LLMs for Hardware Design Challenge</a>.</span></li>
+  </ul>
+
+  <h2>Publications</h2>
+
+  <div class="pub hl">
+    <div class="tag" style="background:#2a78d6">IEEE T-SUSC<br>(submitted)</div>
+    <div>
+      <div class="title">ReSPLIN: Region-Wise Structured Pruning and Low-Rank Factorization for Energy-Efficient Large Language Model Inference</div>
+      <div><strong>Fariza Siddiqua</strong> et al.</div>
+      <div class="venue">Submitted to IEEE Transactions on Sustainable Computing <span class="badge sub">Under review</span></div>
+      <div class="actions"><a href="blog/resplin.html">Blog post</a><a href="https://github.com/fariza1743/MUSHROOM-SVD">Code</a></div>
+    </div>
+  </div>
+
+  <div class="pub hl">
+    <div class="tag" style="background:#6250d6">IEEE D&amp;T<br>(submitted)</div>
+    <div>
+      <div class="title">Rewriting RTL: What LLMs Add Beyond the Tool</div>
+      <div><strong>Fariza Siddiqua</strong>, Md Maruf Hossain Shuvo</div>
+      <div class="venue">Submitted to IEEE Design &amp; Test <span class="badge sub">Under review</span></div>
+      <div class="actions"><a href="blog/rtl-rewriting.html">Blog post</a><a href="https://github.com/fariza1743/LLM-Assisted-RTL-Cleanup-for-FPGA-PPA">Code</a></div>
+    </div>
+  </div>
+
+  <div class="pub hl">
+    <div class="tag" style="background:#3b6ea5">IEEE EMBC<br>2026</div>
+    <div>
+      <div class="title">Parameter-Efficient Convolutional GRU Network with Temporal Regularization for Personalized Prandial Recommendations in Glycemic Control</div>
+      <div><strong>Fariza Siddiqua</strong></div>
+      <div class="venue">IEEE Engineering in Medicine and Biology Society Conference (EMBC), 2026</div>
+      <div class="actions"><a href="blog/conv-gru.html">Blog post</a><a href="https://github.com/fariza1743/Conv-GRU">Code</a></div>
+    </div>
+  </div>
+
+  <div class="pub">
+    <div class="tag" style="background:#4a7f62">IEEE MWSCAS<br>2026</div>
+    <div>
+      <div class="title"><a href="https://ieeexplore.ieee.org/abstract/document/11680633">Embedded AI for Subject-Independent Brain Computer Interface using EEG Signals</a></div>
+      <div>Co-author: <strong>Fariza Siddiqua</strong> · <a href="https://ieeexplore.ieee.org/abstract/document/11680633">full author list</a></div>
+      <div class="venue">IEEE Midwest Symposium on Circuits &amp; Systems (MWSCAS), 2026</div>
+      <div class="actions"><a href="https://ieeexplore.ieee.org/abstract/document/11680633">Paper</a></div>
+    </div>
+  </div>
+
+  <div class="pub">
+    <div class="tag" style="background:#7a5195">WiML @<br>NeurIPS 2025</div>
+    <div>
+      <div class="title">Conv-GRU Temporal Refiner for Prandial Recommendations in Type 1 Diabetes</div>
+      <div><strong>Fariza Siddiqua</strong></div>
+      <div class="venue">Women in Machine Learning Workshop @ NeurIPS, 2025 <span class="badge">Abstract</span></div>
+      <div class="actions"><a href="https://openreview.net/forum?id=XVrjTMyLH8">OpenReview</a></div>
+    </div>
+  </div>
+
+  <div class="pub">
+    <div class="tag" style="background:#8b1a1a">IEEE R10-HTC<br>2023</div>
+    <div>
+      <div class="title"><a href="https://ieeexplore.ieee.org/document/10461782">Leveraging Gram Matrix Representation in Shallow DNN for GI Tract MRI Scanned Image Segmentation</a></div>
+      <div><strong>Fariza Siddiqua</strong></div>
+      <div class="venue">IEEE 11th Region 10 Humanitarian Technology Conference (R10-HTC), 2023 <span class="badge">Undergrad Thesis</span></div>
+      <div class="actions"><a href="https://ieeexplore.ieee.org/document/10461782">Paper</a><a href="https://github.com/fariza1743/Leveraging-Gram-Matrix-in-Shallow-DNN-for-GI-Tract-MRI-Image-Segmentation">Code</a></div>
+    </div>
+  </div>
+
+  <h2>Ongoing Research</h2>
+  <div class="entries">
+    <div class="e"><div class="when">FPGA acceleration</div><div class="what"><strong>End-to-End Transformer Inference on Edge FPGA</strong> · <a href="https://github.com/fariza1743/End-to-End-Transformer-Inference-on-Edge-FPGA">Code</a></div></div>
+  </div>
+
+  <h2>Experience &amp; Education</h2>
+  <div class="entries">
+    <div class="e"><div class="when">2025/08 – Current</div><div class="what"><strong>Ph.D., Electrical &amp; Computer Engineering</strong>, The University of Texas at El Paso<br><span class="muted">Research Associate since 2025/09</span></div></div>
+    <div class="e"><div class="when">2023/08 – 2024/06</div><div class="what"><strong>Radio Service Specialist Engineer</strong>, Banglalink Digital Communications Ltd., Dhaka</div></div>
+    <div class="e"><div class="when">2018 – 2023</div><div class="what"><strong>B.Sc., Electrical &amp; Electronic Engineering</strong>, BUET<br><span class="muted">Major: Communication &amp; Signal Processing · CGPA 3.60/4.00</span></div></div>
+  </div>
+
+  <h2>Honors</h2>
+  <div class="entries">
+    <div class="e"><div class="when">Oct 2026</div><div class="what">Finalist, CSAW AI Hardware Attack Challenge 2026 (ongoing)</div></div>
+    <div class="e"><div class="when">Mar 2026</div><div class="what"><strong>1st place</strong>, LAST-X LLM for Security Competition</div></div>
+    <div class="e"><div class="when">Nov 2025</div><div class="what"><strong>2nd place</strong>, ICCD 2025 LLMs for Hardware Design Challenge</div></div>
+    <div class="e"><div class="when">Oct 2025</div><div class="what">CAHSI Travel Scholarship, GMiS Conference 2025</div></div>
+    <div class="e"><div class="when">2025 – 2026</div><div class="what">Texas Instruments Foundation Endowed Scholarship</div></div>
+  </div>
+  <p class="muted" style="margin-top:14px">Undergraduate awards, projects, teaching and photos are on the <a href="misc.html">Misc</a> page.</p>
+
+  <footer>Last updated November 2026</footer>
+</main>
+</body>
+</html>
