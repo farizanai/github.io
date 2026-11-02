@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fewer parameters, fewer joules? Inside ReSPLIN · Fariza Siddiqua</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/viz.js"></script>
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="../index.html">Home</a><a href="../blog.html" class="active">Blog</a><a href="../misc.html">Misc</a>
+  <a class="brand" href="../index.html">Fariza Siddiqua</a>
+</div></nav>
+<main><article>
+  <h1>Fewer parameters, fewer joules? Inside ReSPLIN</h1>
+  <div class="meta">November 2026 · LLM compression · energy-efficient inference · ~7 min read</div>
+
+  <p class="lede">Most LLM pruning papers report how many parameters or FLOPs they removed. I wanted to know something
+  more practical: <strong>when you prune a model, does the GPU actually burn less energy?</strong> Surprisingly often, the answer is no.</p>
+
+  <p>Unstructured sparsity leaves zeros inside matrices the GPU still multiplies at full size. Even structured methods can
+  produce awkward operator shapes, extra kernels, or extra memory traffic. GPU energy depends on all of those, not just the parameter
+  count. ReSPLIN (<em>Region-Wise Structured Pruning and Low-Rank Factorization for LLM INference</em>) is my attempt at a
+  post-training, calibration-only compression scheme whose savings show up on a power meter, with no retraining or fine-tuning.</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">2.7–12.2%</div><div class="l">measured prefill energy saved</div></div>
+    <div class="kpi"><div class="v">up to 29%</div><div class="l">higher throughput (Qwen 2.5 3B, 8K)</div></div>
+    <div class="kpi"><div class="v">~10–15%</div><div class="l">parameters removed</div></div>
+    <div class="kpi"><div class="v">0</div><div class="l">retraining or fine-tuning steps</div></div>
+  </div>
+
+  <h3>1 · Not all layers are equally compressible</h3>
+  <p>I started by asking which layers can absorb damage. Two causal probes on LLaMA 3.2 3B gave a clear picture. Perturbing
+  previous-token states in the <em>first</em> layers shifts the final output distribution about <strong>4.1×</strong> more than the interior average,
+  because those layers route context. Attenuating the <em>last</em> layers' updates shifts it about <strong>9.2×</strong> more, because they read out the prediction.
+  The middle of the network recovers from perturbations much better.</p>
+  <p>So ReSPLIN splits the decoder into three regions. <strong>Root</strong> (the first two and last two layers) stays dense.
+  <strong>Stem</strong> (the first two-thirds of the interior) gets structured MLP channel pruning. <strong>Cap</strong> (the remaining third) gets light low-rank factorization of its attention Q and O projections.</p>
+
+  <figure>
+    <div class="fig-title">How ReSPLIN partitions each model</div>
+    <div class="fig-sub">One block per transformer layer. Hover a layer to see what happens to it.</div>
+    <div class="controls"><span class="seg" id="mSeg"></span></div>
+    <div class="chart" id="layers"></div>
+    <div class="legend"><span><i style="background:#3b3a36"></i>Root · kept dense</span><span><i style="background:#2a78d6"></i>Stem · structured MLP pruning</span><span><i style="background:#eb6834"></i>Cap · CapSVD on Q/O</span></div>
+    <figcaption>Root = layers {1, 2, L−1, L}; Stem = the next ⌊⅔(L−4)⌋ layers; Cap = the rest. Layer counts: LLaMA 3.2 1B = 16, LLaMA 3.2 3B = 28, Qwen 2.5 3B = 36.</figcaption>
+  </figure>
+
+  <p>Does the split matter? On LLaMA 3.2 1B, I held the parameter budget at about 15% and moved the region boundaries around.
+  Removing the protected Root more than tripled perplexity. Protecting only the first two layers helped a lot, and protecting only the last two did not.
+  Swapping which region gets which treatment gave a tiny bit more energy saving but much worse quality.</p>
+
+  <figure>
+    <div class="fig-title">Region layout ablation &mdash; LLaMA 3.2 1B, C4, ~15% parameters pruned</div>
+    <div class="fig-sub">Compressed perplexity (lower is better), averaged over five context lengths. Dense model = 21.62. Hover for energy saving.</div>
+    <div class="chart" id="ablation"></div>
+    <details class="table-view"><summary>Show as table</summary><div id="ablationTable"></div></details>
+  </figure>
+
+  <h3>2 · Prune whole channels, physically</h3>
+  <p>In the Stem, every MLP channel gets a saliency score that combines its calibration activations with the strength of its downstream weights.
+  The pruning budget is then handed out greedily: at each step, the layer that loses the least saliency per extra 10% of pruning gets pruned a bit more,
+  with a penalty that protects layers near the boundaries. The surviving channels are kept consistently across the gate, up and down projections,
+  and the width is rounded to a multiple of 64. <strong>The MLP really gets smaller.</strong> There are no masks and no zeros, so the GPU runs
+  smaller dense matrix multiplies.</p>
+  <p>In the Cap, <a href="capsvd-rank.html">CapSVD</a> factorizes a few Q/O projections with an activation-weighted SVD. Its rank rule
+  refuses any factorization that would cost more than the dense matrix. That rule gets its own post.</p>
+
+  <h3>3 · What the power meter says</h3>
+  <p>I measured full-model prefill energy on an NVIDIA RTX 5000 Ada. NVML power was sampled at 100 Hz and integrated over at least 3 s, idle power was subtracted,
+  and the result was normalised per token. Every method ran under identical settings. Pick a context length below.
+  A point to the <strong>right</strong> saves energy, and a point <strong>lower</strong> loses less perplexity.</p>
+
+  <figure>
+    <div class="fig-title">Energy saving vs. perplexity cost &mdash; LLaMA 3.2 1B Instruct on C4</div>
+    <div class="fig-sub">Each point is one compression method compared with the dense model at the same context length.</div>
+    <div class="controls"><span class="muted">Context length</span><span class="seg" id="ctxSeg"></span></div>
+    <div class="chart" id="scatter"></div>
+    <div class="legend"><span><i style="background:#2a78d6"></i>ReSPLIN</span><span><i style="background:#b9b8b3"></i>Other methods</span></div>
+    <figcaption>Wanda and SparseGPT keep perplexity almost unchanged, but their unstructured zeros still run as dense matmuls, so energy goes <em>up</em>.
+      SliceGPT saves the most energy from 2K tokens up, but at a much larger perplexity cost. LLM-Pruner and LoRAP cost the most energy.</figcaption>
+    <details class="table-view"><summary>Show as table</summary><div id="scatterTable"></div></details>
+  </figure>
+
+  <p>Only two methods save energy <em>and</em> raise throughput at every context length from 512 to 16K tokens: ReSPLIN and SliceGPT.
+  SliceGPT pays about 3–4× more perplexity for it (ΔPPL 17–24 against ReSPLIN's 4.7–5.7). Among the methods that change the model's
+  structure, ReSPLIN has the smallest perplexity cost.</p>
+
+  <h3>4 · Does it hold up on other models and tasks?</h3>
+  <p>At the default operating point (30% Stem pruning plus a 20% CapSVD target, about 10% of parameters removed), I evaluated three models on two long-context QA
+  sets and two language-modelling sets. Every one of the 24 configurations saves energy and runs faster.</p>
+
+  <figure>
+    <div class="fig-title">ReSPLIN gains across models, datasets and context lengths</div>
+    <div class="fig-sub">Relative to the dense model at ~10% parameter reduction. Hover a dot for the quality change.</div>
+    <div class="controls"><span class="seg" id="metSeg"></span></div>
+    <div class="chart" id="dots"></div>
+    <div class="legend"><span><i style="background:#2a78d6;border-radius:50%"></i>8K context</span><span><i style="background:#eb6834;border-radius:50%"></i>16K context</span></div>
+    <details class="table-view"><summary>Show as table</summary><div id="dotsTable"></div></details>
+  </figure>
+
+  <div class="callout"><strong>Honest caveats.</strong> The 1B model is fragile: QA-F1 drops by 6–12 points on NarrativeQA, while the 3B models
+  lose only about 0.7–2.8 points. My ablations also show that Stem MLP pruning delivers nearly all the energy saving. CapSVD on its own reduces parameters
+  but not energy, so ReSPLIN uses it only as a light secondary step.</div>
+
+  <h3>Takeaway</h3>
+  <p>Parameter count is a proxy, and an unreliable one. If the goal is energy, compression has to produce <strong>smaller dense operators, aligned
+  to the hardware</strong>, and it has to leave alone the layers the network can't recover from. ReSPLIN is a simple, static, retraining-free way to do that.</p>
+
+  <p class="muted" style="font-size:13.5px">Paper: <em>ReSPLIN: Region-Wise Structured Pruning and Low-Rank Factorization for Energy-Efficient Large Language Model Inference</em> (under review).
+    Code: <a href="https://github.com/fariza1743/MUSHROOM-SVD">github.com/fariza1743/MUSHROOM-SVD</a>.</p>
+
+  <a class="back" href="../blog.html">&larr; All posts</a>
+</article></main>
+
+<script>
+/* ---------- Figure: layer map ---------- */
+const MODELS = { '1b': ['LLaMA 3.2 1B', 16], '3b': ['LLaMA 3.2 3B', 28], 'qwen': ['Qwen 2.5 3B', 36] };
+const REG = {
+  root: ['#3b3a36', 'Root', 'Kept dense. Context-routing (first) and read-out (last) layers are the least able to recover.'],
+  stem: ['#2a78d6', 'Stem', 'Saliency-guided structured MLP channel pruning. Gate/up/down physically shrink.'],
+  cap:  ['#eb6834', 'Cap',  'CapSVD: activation-weighted low-rank factorization of selected Q and O projections.']
+};
+function drawLayers(key) {
+  const [name, L] = MODELS[key];
+  const nStem = Math.floor(2 / 3 * (L - 4));
+  const W = 680, H = 92, x0 = 4, gap = 2, bw = (W - x0 * 2 - gap * (L - 1)) / L;
+  const svg = svgRoot(document.getElementById('layers'), W, H);
+  for (let i = 1; i <= L; i++) {
+    const r = (i <= 2 || i >= L - 1) ? 'root' : (i <= 2 + nStem ? 'stem' : 'cap');
+    const x = x0 + (i - 1) * (bw + gap);
+    const rect = el('rect', { x, y: 10, width: bw, height: 46, rx: 3, fill: REG[r][0] }, svg);
+    const hit = el('rect', { x: x - gap / 2, y: 0, width: bw + gap, height: 70, fill: 'transparent' }, svg);
+    hover(hit, () => `<b>Layer ${i}</b> · ${REG[r][1]}<br>${REG[r][2]}`);
+    hit.addEventListener('mouseenter', () => rect.setAttribute('opacity', .75));
+    hit.addEventListener('mouseleave', () => rect.setAttribute('opacity', 1));
+    if (i === 1 || i === L || i === 3 || i === 3 + nStem || L <= 16)
+      txt(svg, x + bw / 2, 72, i, { 'text-anchor': 'middle', 'font-size': 11 });
+  }
+  const mid = (a, b) => x0 + ((a + b) / 2 - 1) * (bw + gap) + bw / 2;
+  txt(svg, mid(3, 2 + nStem), 88, `Stem · layers 3–${2 + nStem}`, { 'text-anchor': 'middle', fill: '#1c5cab', 'font-weight': 700 });
+  txt(svg, mid(3 + nStem, L - 2), 88, `Cap · ${3 + nStem}–${L - 2}`, { 'text-anchor': 'middle', fill: '#b5461b', 'font-weight': 700 });
+}
+seg(document.getElementById('mSeg'), Object.entries(MODELS).map(([k, v]) => [k, v[0]]), '1b', drawLayers);
+drawLayers('1b');
+
+/* ---------- Figure: ablation (Table I) ---------- */
+const ABL = [
+  ['No protected layers', 70.12, 9.95], ['First two layers protected', 36.86, 10.74], ['Last two layers protected', 73.43, 10.74],
+  ['0.5 Stem / 0.5 Cap', 31.50, 11.32], ['0.75 Stem / 0.25 Cap', 31.55, 12.07], ['ReSPLIN (⅔ Stem / ⅓ Cap)', 31.40, 12.23], ['ReSPLIN, regions swapped', 42.07, 12.31]
+];
+(function () {
+  const W = 680, rowH = 30, top = 8, left = 200, right = 60, H = top + ABL.length * rowH + 26;
+  const svg = svgRoot(document.getElementById('ablation'), W, H);
+  const x = scale(0, 80, left, W - right);
+  niceTicks(0, 80, 4).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: top, y2: H - 22, stroke: '#ecebe7' }, svg); txt(svg, x(t), H - 6, t, { 'text-anchor': 'middle', 'font-size': 11 }); });
+  ABL.forEach(([name, ppl, e], i) => {
+    const y = top + i * rowH + 6, h = rowH - 12, best = name.startsWith('ReSPLIN (');
+    txt(svg, left - 10, y + h / 2 + 4, name, { 'text-anchor': 'end', fill: best ? '#0b0b0b' : '#52514e', 'font-weight': best ? 700 : 400 });
+    const p = el('path', { d: `M${x(0)},${y}H${x(ppl) - 4}Q${x(ppl)},${y} ${x(ppl)},${y + 4}V${y + h - 4}Q${x(ppl)},${y + h} ${x(ppl) - 4},${y + h}H${x(0)}Z`, fill: best ? '#2a78d6' : '#c9c8c2' }, svg);
+    txt(svg, x(ppl) + 6, y + h / 2 + 4, ppl.toFixed(1), { fill: '#0b0b0b', 'font-size': 11.5 });
+    const hit = el('rect', { x: 0, y: y - 6, width: W, height: rowH, fill: 'transparent' }, svg);
+    hover(hit, () => `<b>${name}</b><br>Compressed PPL: ${ppl}<br>Energy saving: ${e}%`);
+  });
+  el('line', { x1: x(21.62), x2: x(21.62), y1: top - 4, y2: H - 22, stroke: '#0b0b0b', 'stroke-dasharray': '3 3' }, svg);
+  txt(svg, x(21.62) + 4, top + 2, 'dense 21.6', { 'font-size': 10.5, fill: '#0b0b0b' });
+  document.getElementById('ablationTable').innerHTML = '<table><tr><th>Layout</th><th>Compressed PPL</th><th>Energy saving</th></tr>' +
+    ABL.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}%</td></tr>`).join('') + '</table>';
+})();
+
+/* ---------- Figure: method scatter (Table IV) ---------- */
+const CTX = [512, 1024, 2048, 4096, 8192, 16384];
+const METH = { // [dPPL[], energy saving %[], throughput %[]]
+  'LLM-Pruner': [[12.64,13.80,14.49,15.75,17.04,17.56], [-22.2,-22.2,-19.8,-20.2,-18.2,-14.0], [-17.5,-17.2,-13.9,-14.4,-14.1,-12.7]],
+  'FLAP':       [[7.76,7.39,6.77,6.52,6.44,6.35], [-7.4,-6.3,-6.2,-6.7,-5.9,-2.9], [-5.6,-4.8,-3.1,-4.6,-4.3,-4.2]],
+  'ASVD':       [[41.81,40.81,40.06,39.26,40.61,42.99], [-8.46,-7.64,-6.26,-6.74,-5.30,-3.99], [-5.15,-5.47,-3.8,-4.57,-4.30,-4.15]],
+  'LoRAP':      [[9.84,9.88,10.68,11.52,12.90,13.72], [-40.22,-34.96,-30.55,-32.50,-28.79,-22.12], [-24.62,-23.78,-19.61,-19.49,-18.62,-17.92]],
+  'Wanda':      [[0,0,0,0,0,0], [-7.3,-4.3,-3.6,-2.7,-2.5,-3.1], [-3.7,-3.2,-1.8,-1.6,-1.4,-2.2]],
+  'SparseGPT':  [[0.26,0.21,0.19,0.19,0.19,0.17], [-8.1,-3.7,-4.4,-5.9,-4.6,-2.7], [-3.6,-1.9,-2.0,-3.5,-3.1,-3.9]],
+  'SliceGPT':   [[24.17,19.05,17.70,17.84,18.99,18.97], [0.3,6.1,15.8,13.9,12.4,8.6], [0.3,7.6,23.8,22.6,20.2,13.5]],
+  'ReSPLIN':    [[5.71,5.41,5.00,4.83,4.74,4.67], [9.6,8.7,7.2,6.8,6.2,5.8], [9.27,10.04,8.75,7.81,6.93,6.12]]
+};
+function drawScatter(ci) {
+  const W = 680, H = 380, m = { l: 52, r: 20, t: 14, b: 44 };
+  const svg = svgRoot(document.getElementById('scatter'), W, H);
+  const x = scale(-45, 20, m.l, W - m.r), y = scale(0, 45, H - m.b, m.t);
+  el('rect', { x: x(0), y: m.t, width: x(20) - x(0), height: H - m.b - m.t, fill: '#eef5fd' }, svg);
+  txt(svg, x(20) - 6, m.t + 14, 'saves energy →', { 'text-anchor': 'end', 'font-size': 11, fill: '#1c5cab' });
+  niceTicks(-45, 20, 7).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: t === 0 ? '#9a9993' : '#ecebe7' }, svg); txt(svg, x(t), H - m.b + 16, t + '%', { 'text-anchor': 'middle', 'font-size': 11 }); });
+  niceTicks(0, 45, 5).forEach(t => { el('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: '#ecebe7' }, svg); txt(svg, m.l - 8, y(t) + 4, t, { 'text-anchor': 'end', 'font-size': 11 }); });
+  txt(svg, (m.l + W - m.r) / 2, H - 6, 'Energy saving vs. dense (%)', { 'text-anchor': 'middle', fill: '#0b0b0b' });
+  txt(svg, 14, (m.t + H - m.b) / 2, 'Perplexity increase (ΔPPL)', { 'text-anchor': 'middle', fill: '#0b0b0b', transform: `rotate(-90 14 ${(m.t + H - m.b) / 2})` });
+  const nudge = { 'Wanda': [0, -12], 'SparseGPT': [-36, 4], 'FLAP': [0, -12], 'LoRAP': [0, -12] };
+  Object.entries(METH).forEach(([name, [d, e, tp]]) => {
+    const me = name === 'ReSPLIN', cx = x(e[ci]), cy = y(d[ci]);
+    el('circle', { cx, cy, r: me ? 7 : 5.5, fill: me ? '#2a78d6' : '#b9b8b3', stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+    const [dx, dy] = nudge[name] || [0, -12];
+    txt(svg, cx + dx, cy + dy, name, { 'text-anchor': 'middle', 'font-size': 11.5, fill: me ? '#0b0b0b' : '#52514e', 'font-weight': me ? 700 : 400 });
+    const hit = el('circle', { cx, cy, r: 14, fill: 'transparent' }, svg);
+    hover(hit, () => `<b>${name}</b> · ${CTX[ci].toLocaleString()} tokens<br>Energy saving: ${e[ci]}%<br>Throughput: ${tp[ci] > 0 ? '+' : ''}${tp[ci]}%<br>ΔPPL: ${d[ci]}`);
+  });
+  document.getElementById('scatterTable').innerHTML = `<table><tr><th>Method (${CTX[ci]} tokens)</th><th>ΔPPL</th><th>Energy saving</th><th>Throughput</th></tr>` +
+    Object.entries(METH).map(([n, [d, e, t]]) => `<tr><td>${n}</td><td>${d[ci]}</td><td>${e[ci]}%</td><td>${t[ci]}%</td></tr>`).join('') + '</table>';
+}
+seg(document.getElementById('ctxSeg'), CTX.map((c, i) => [i, c >= 1024 ? (c / 1024) + 'K' : c]), 4, drawScatter);
+drawScatter(4);
+
+/* ---------- Figure: dots across models (Tables II & III) ---------- */
+// [dataset, model, metricName, [8K: dq, energy, thr], [16K: dq, energy, thr]]
+const ROWS = [
+  ['NarrativeQA','LLaMA 3.2 1B','ΔF1',[-11.53,9.3,9.55],[-12.07,5.5,5.56]],
+  ['NarrativeQA','LLaMA 3.2 3B','ΔF1',[-1.81,8.1,7.6],[-2.30,5.4,4.8]],
+  ['NarrativeQA','Qwen 2.5 3B','ΔF1',[-2.61,12.2,29.0],[-2.37,8.3,8.1]],
+  ['Qasper','LLaMA 3.2 1B','ΔF1',[-5.83,5.7,5.9],[-5.75,2.7,5.7]],
+  ['Qasper','LLaMA 3.2 3B','ΔF1',[-0.66,6.3,6.0],[-1.45,4.5,4.0]],
+  ['Qasper','Qwen 2.5 3B','ΔF1',[-2.78,8.3,9.2],[-2.48,4.9,6.7]],
+  ['WikiText-2','LLaMA 3.2 1B','ΔPPL',[3.99,6.4,7.2],[4.02,4.6,4.8]],
+  ['WikiText-2','LLaMA 3.2 3B','ΔPPL',[2.28,6.8,7.7],[2.34,6.0,6.2]],
+  ['WikiText-2','Qwen 2.5 3B','ΔPPL',[1.06,9.7,11.2],[1.04,8.7,9.4]],
+  ['C4','LLaMA 3.2 1B','ΔPPL',[4.74,6.2,6.93],[4.67,5.8,6.12]],
+  ['C4','LLaMA 3.2 3B','ΔPPL',[4.17,6.9,7.5],[3.96,6.4,6.3]],
+  ['C4','Qwen 2.5 3B','ΔPPL',[1.79,8.7,10.1],[1.71,8.0,8.7]]
+];
+function drawDots(mi) { // 1 = energy, 2 = throughput
+  const W = 680, rowH = 26, gapG = 14, m = { l: 190, r: 30, t: 10, b: 38 };
+  const H = m.t + ROWS.length * rowH + 3 * gapG + m.b;
+  const svg = svgRoot(document.getElementById('dots'), W, H);
+  const max = mi === 1 ? 14 : 30, x = scale(0, max, m.l, W - m.r);
+  niceTicks(0, max, 6).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: '#ecebe7' }, svg); txt(svg, x(t), H - m.b + 16, t + '%', { 'text-anchor': 'middle', 'font-size': 11 }); });
+  txt(svg, (m.l + W - m.r) / 2, H - 6, mi === 1 ? 'Energy saving vs. dense (%)' : 'Throughput improvement vs. dense (%)', { 'text-anchor': 'middle', fill: '#0b0b0b' });
+  let y = m.t, last = '';
+  ROWS.forEach(r => {
+    if (r[0] !== last) { if (last) y += gapG; txt(svg, 4, y + rowH / 2 + 4, r[0], { 'font-weight': 700, fill: '#0b0b0b' }); last = r[0]; }
+    const cy = y + rowH / 2;
+    txt(svg, m.l - 10, cy + 4, r[1], { 'text-anchor': 'end' });
+    const a = r[3][mi], b = r[4][mi];
+    el('line', { x1: x(Math.min(a, b)), x2: x(Math.max(a, b)), y1: cy, y2: cy, stroke: '#d6d5cf', 'stroke-width': 2 }, svg);
+    [[a, '#2a78d6', '8K', r[3]], [b, '#eb6834', '16K', r[4]]].forEach(([v, c, lab, arr]) => {
+      el('circle', { cx: x(v), cy, r: 5.5, fill: c, stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+      const hit = el('circle', { cx: x(v), cy, r: 12, fill: 'transparent' }, svg);
+      hover(hit, () => `<b>${r[1]} · ${r[0]} · ${lab}</b><br>Energy saving: ${arr[1]}%<br>Throughput: +${arr[2]}%<br>${r[2]}: ${arr[0] > 0 ? '+' : ''}${arr[0]}`);
+    });
+    if (r[0] === 'NarrativeQA' && r[1] === 'Qwen 2.5 3B' && mi === 2) txt(svg, x(a) - 10, cy + 4, '29.0%', { 'text-anchor': 'end', 'font-size': 11, fill: '#0b0b0b', 'font-weight': 700 });
+    y += rowH;
+  });
+  document.getElementById('dotsTable').innerHTML = '<table><tr><th>Dataset · Model</th><th>Energy 8K</th><th>Energy 16K</th><th>Thru 8K</th><th>Thru 16K</th><th>Quality 8K</th><th>Quality 16K</th></tr>' +
+    ROWS.map(r => `<tr><td>${r[0]} · ${r[1]}</td><td>${r[3][1]}%</td><td>${r[4][1]}%</td><td>${r[3][2]}%</td><td>${r[4][2]}%</td><td>${r[2]} ${r[3][0]}</td><td>${r[2]} ${r[4][0]}</td></tr>`).join('') + '</table>';
+}
+seg(document.getElementById('metSeg'), [[1, 'Energy saving'], [2, 'Throughput gain']], 1, drawDots);
+drawDots(1);
+</script>
+</body>
+</html>

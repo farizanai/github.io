@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When does low-rank actually pay? The CapSVD rank rule · Fariza Siddiqua</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/viz.js"></script>
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="../index.html">Home</a><a href="../blog.html" class="active">Blog</a><a href="../misc.html">Misc</a>
+  <a class="brand" href="../index.html">Fariza Siddiqua</a>
+</div></nav>
+<main><article>
+  <h1>When does low-rank actually pay? The CapSVD rank rule</h1>
+  <div class="meta">November 2026 · low-rank factorization · interactive explainer · ~5 min read</div>
+
+  <p class="lede">Replacing a weight matrix <em>W</em> with two thin factors <em>A·B</em> is the classic way to compress a layer. But two matrix
+  multiplies are not automatically cheaper than one. This post works through the rule I use in
+  <a href="resplin.html">ReSPLIN</a>'s CapSVD step to pick a rank that is both <strong>accurate enough</strong> and <strong>actually cheaper</strong>.</p>
+
+  <h3>The break-even rank</h3>
+  <p>A dense projection <em>W</em> ∈ ℝ<sup>d<sub>o</sub>×d<sub>i</sub></sup> costs about d<sub>o</sub>·d<sub>i</sub> multiply-accumulates (MACs) per token.
+  A rank-<em>r</em> factorization costs <em>r</em>(d<sub>i</sub>+d<sub>o</sub>). The two are equal at</p>
+  <div class="eq">r*<sub>BE</sub> = d<sub>o</sub>·d<sub>i</sub> / (d<sub>i</sub> + d<sub>o</sub>)</div>
+  <p>For a square 2048×2048 attention projection that is just 1024, <strong>half the width</strong>. Any rank above that is more expensive than leaving the matrix alone.
+  Two kernels instead of one also add launch and memory overhead, so CapSVD keeps a safety margin and caps the rank at γ·r*<sub>BE</sub> with γ = 0.75.</p>
+
+  <h3>How much rank does the matrix "need"?</h3>
+  <p>CapSVD first rescales <em>W</em>'s input columns by the RMS activation each input dimension sees on calibration data
+  (W<sub>eff</sub> = W·D), so the SVD focuses on directions the model actually uses. From the singular values of W<sub>eff</sub> it computes an
+  <strong>effective rank</strong>, the exponential of the entropy of the normalised spectral energy:</p>
+  <div class="eq">p<sub>i</sub> = σ<sub>i</sub>² / Σ<sub>j</sub> σ<sub>j</sub>² &nbsp;&nbsp;&nbsp; r<sub>eff</sub> = exp(−Σ<sub>i</sub> p<sub>i</sub> log p<sub>i</sub>)</div>
+  <p>It then pads that by β = 1.25, rounds up to a multiple of 16 for the hardware, and clamps it with the parameter-reduction target ρ<sub>c</sub> and the break-even cap:</p>
+  <div class="eq">r = min( r<sub>max</sub>, max(16, 16·⌈β·r<sub>eff</sub>/16⌉) ), &nbsp; r<sub>max</sub> = min( d<sub>i</sub>, d<sub>o</sub>, r<sub>tar</sub>, γ·r*<sub>BE</sub> ), &nbsp; r<sub>tar</sub> = (1−ρ<sub>c</sub>)·d<sub>o</sub>d<sub>i</sub>/(d<sub>i</sub>+d<sub>o</sub>)</div>
+
+  <h3>Try it</h3>
+  <p>Below is a synthetic singular-value spectrum, σ<sub>i</sub> ∝ i<sup>−α</sup>. A steeper decay means the energy is concentrated in fewer directions.
+  Move the sliders and watch which constraint decides the final rank.</p>
+
+  <figure>
+    <div class="fig-title">CapSVD rank selection, live</div>
+    <div class="fig-sub">The formulas are the ones in the paper. The spectrum is illustrative, not taken from a real checkpoint.</div>
+    <div class="controls"><span class="muted">Projection size</span><span class="seg" id="dSeg"></span></div>
+    <div class="controls">
+      <label class="slider">Spectrum decay α <input type="range" id="alpha" min="0.3" max="1.3" step="0.01" value="0.62"><output id="alphaO"></output></label>
+      <label class="slider">β <input type="range" id="beta" min="1" max="2" step="0.05" value="1.25"><output id="betaO"></output></label>
+    </div>
+    <div class="controls">
+      <label class="slider">Target ρc <input type="range" id="rho" min="0.05" max="0.8" step="0.05" value="0.2"><output id="rhoO"></output></label>
+      <label class="slider">Guard γ <input type="range" id="gamma" min="0.4" max="1" step="0.05" value="0.75"><output id="gammaO"></output></label>
+    </div>
+
+    <div class="kpis" id="kpis" style="margin:10px 0 6px;grid-template-columns:repeat(auto-fit,minmax(118px,1fr))"></div>
+
+    <div class="fig-title" style="font-size:13.5px;margin-top:10px">Spectral energy captured vs. rank</div>
+    <div class="chart" id="spec"></div>
+
+    <div class="fig-title" style="font-size:13.5px;margin-top:16px">Cost per token: dense vs. rank-r factorization</div>
+    <div class="chart" id="cost"></div>
+    <div class="legend"><span><i style="background:#3b3a36;height:2px;vertical-align:4px"></i>Dense W (constant)</span><span><i style="background:#2a78d6;height:2px;vertical-align:4px"></i>Factorized A·B</span><span><i style="background:#eb6834"></i>Chosen rank r</span></div>
+    <figcaption>Hover either chart to read values at any rank. The shaded band is ranks the γ-guard forbids.</figcaption>
+  </figure>
+
+  <p>A few things become obvious once you play with it:</p>
+  <ul>
+    <li><strong>For flat spectra the break-even cap binds.</strong> When α is small, the effective rank is huge and the padded rank would exceed
+      γ·r*<sub>BE</sub>. The rule clips it there, which also clips accuracy.</li>
+    <li><strong>For steep spectra the effective rank binds.</strong> When the energy is concentrated, a small rank captures most of it,
+      and the MAC saving can be large.</li>
+    <li><strong>Projections that save almost nothing are skipped.</strong> CapSVD only keeps candidates with η &gt; 1% parameter reduction, and then
+      factorizes at most N<sub>max</sub> of them, the ones with the largest absolute saving.</li>
+  </ul>
+
+  <div class="callout"><strong>What I learned the hard way.</strong> In the ReSPLIN ablations, cranking up CapSVD alone reduced parameters steadily, but measured energy per
+    token went flat or <em>up</em>, and throughput didn't improve. At these model sizes the attention projections are already cheap relative to the extra
+    kernel overhead. That is why ReSPLIN uses CapSVD only lightly, on Q and O in the Cap layers, and leaves the energy saving to
+    <a href="resplin.html">structured Stem MLP pruning</a>.</div>
+
+  <a class="back" href="../blog.html">&larr; All posts</a>
+</article></main>
+
+<script>
+const PRESETS = { 2048: '2048 × 2048 (LLaMA 3.2 1B · Qwen 2.5 3B Q/O)', 3072: '3072 × 3072 (LLaMA 3.2 3B Q/O)' };
+let d = 2048;
+const $ = id => document.getElementById(id);
+function compute() {
+  const a = +$('alpha').value, beta = +$('beta').value, rho = +$('rho').value, gam = +$('gamma').value;
+  const di = d, dout = d, q = d;
+  const s2 = new Float64Array(q); let tot = 0;
+  for (let i = 0; i < q; i++) { s2[i] = Math.pow(i + 1, -2 * a); tot += s2[i]; }
+  let H = 0; const cum = new Float64Array(q); let c = 0;
+  for (let i = 0; i < q; i++) { const p = s2[i] / tot; if (p > 0) H -= p * Math.log(p); c += p; cum[i] = c; }
+  const reff = Math.exp(H);
+  const rraw = Math.ceil(beta * reff), ralign = 16 * Math.ceil(rraw / 16);
+  const rstar = dout * di / (di + dout), rbe = Math.floor(gam * rstar);
+  const rtar = Math.floor((1 - rho) * dout * di / (di + dout));
+  const rmax = Math.max(1, Math.min(di, dout, rtar, rbe));
+  const r = Math.min(rmax, Math.max(16, ralign));
+  const eta = 1 - r * (di + dout) / (di * dout);
+  const binding = r === rmax && ralign > rmax ? (rmax === rbe ? 'break-even guard γ·r*' : 'parameter target r_tar') : (ralign < 16 ? 'minimum rank 16' : 'effective rank (β·r_eff)');
+  return { a, beta, rho, gam, di, dout, cum, reff, ralign, rstar, rbe, rtar, r, eta, binding };
+}
+function draw() {
+  ['alpha', 'beta', 'rho', 'gamma'].forEach(k => $(k + 'O').textContent = (+$(k).value).toFixed(2));
+  const S = compute();
+  $('kpis').innerHTML = [
+    [Math.round(S.reff), 'effective rank r<sub>eff</sub>'],
+    [S.r, 'chosen rank r'],
+    [(S.eta * 100).toFixed(1) + '%', 'params & MACs saved (η)'],
+    [(S.cum[S.r - 1] * 100).toFixed(1) + '%', 'spectral energy kept'],
+  ].map(([v, l]) => `<div class="kpi"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('') +
+    `<div class="kpi"><div class="v" style="font-size:15px;line-height:1.35;padding-top:4px">${S.binding}</div><div class="l">constraint that decided r</div></div>`;
+
+  /* spectrum: cumulative energy vs rank */
+  {
+    const W = 680, H = 200, m = { l: 48, r: 16, t: 10, b: 34 };
+    const svg = svgRoot($('spec'), W, H), x = scale(0, d, m.l, W - m.r), y = scale(0, 1, H - m.b, m.t);
+    el('rect', { x: x(S.rbe), y: m.t, width: x(d) - x(S.rbe), height: H - m.b - m.t, fill: '#f3f2ee' }, svg);
+    niceTicks(0, d, 8).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: '#ecebe7' }, svg); txt(svg, x(t), H - m.b + 15, t, { 'text-anchor': 'middle', 'font-size': 11 }); });
+    [0, .25, .5, .75, 1].forEach(t => { el('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: '#ecebe7' }, svg); txt(svg, m.l - 6, y(t) + 4, (t * 100) + '%', { 'text-anchor': 'end', 'font-size': 11 }); });
+    let dpath = ''; const step = Math.max(1, Math.floor(d / 340));
+    for (let i = 0; i < d; i += step) dpath += (i ? 'L' : 'M') + x(i + 1).toFixed(1) + ',' + y(S.cum[i]).toFixed(1);
+    el('path', { d: dpath, fill: 'none', stroke: '#2a78d6', 'stroke-width': 2 }, svg);
+    el('line', { x1: x(S.r), x2: x(S.r), y1: m.t, y2: H - m.b, stroke: '#eb6834', 'stroke-width': 2 }, svg);
+    el('circle', { cx: x(S.r), cy: y(S.cum[S.r - 1]), r: 5, fill: '#eb6834', stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+    txt(svg, x(S.r) + 7, y(S.cum[S.r - 1]) + 16, `r = ${S.r}`, { fill: '#0b0b0b', 'font-weight': 700 });
+    el('line', { x1: x(S.reff), x2: x(S.reff), y1: m.t, y2: H - m.b, stroke: '#9a9993', 'stroke-dasharray': '3 3' }, svg);
+    txt(svg, x(S.reff) + 4, m.t + 12, 'r_eff', { 'font-size': 11 });
+    txt(svg, (m.l + W - m.r) / 2, H - 4, 'Rank', { 'text-anchor': 'middle', fill: '#0b0b0b' });
+    crosshair(svg, x, m, H, W, i => `<b>rank ${i}</b><br>energy kept: ${(S.cum[i - 1] * 100).toFixed(1)}%`);
+  }
+  /* cost chart */
+  {
+    const W = 680, H = 220, m = { l: 48, r: 16, t: 10, b: 34 };
+    const dense = S.di * S.dout / 1e6, maxY = dense * 2;
+    const svg = svgRoot($('cost'), W, H), x = scale(0, d, m.l, W - m.r), y = scale(0, maxY, H - m.b, m.t);
+    el('rect', { x: x(S.rbe), y: m.t, width: x(d) - x(S.rbe), height: H - m.b - m.t, fill: '#f3f2ee' }, svg);
+    txt(svg, x(S.rbe) + 6, m.t + 14, 'forbidden by γ guard', { 'font-size': 11, fill: '#7a7974' });
+    niceTicks(0, d, 8).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: '#ecebe7' }, svg); txt(svg, x(t), H - m.b + 15, t, { 'text-anchor': 'middle', 'font-size': 11 }); });
+    niceTicks(0, maxY, 4).forEach(t => { el('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: '#ecebe7' }, svg); txt(svg, m.l - 6, y(t) + 4, t + 'M', { 'text-anchor': 'end', 'font-size': 11 }); });
+    el('line', { x1: x(0), x2: x(d), y1: y(dense), y2: y(dense), stroke: '#3b3a36', 'stroke-width': 2 }, svg);
+    el('line', { x1: x(0), x2: x(d), y1: y(0), y2: y(d * (S.di + S.dout) / 1e6), stroke: '#2a78d6', 'stroke-width': 2 }, svg);
+    el('circle', { cx: x(S.rstar), cy: y(dense), r: 4.5, fill: '#3b3a36', stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+    txt(svg, x(S.rstar) - 6, y(dense) - 8, `break-even r* = ${Math.round(S.rstar)}`, { 'text-anchor': 'end', 'font-size': 11, fill: '#0b0b0b' });
+    const cr = S.r * (S.di + S.dout) / 1e6;
+    el('line', { x1: x(S.r), x2: x(S.r), y1: m.t, y2: H - m.b, stroke: '#eb6834', 'stroke-width': 2 }, svg);
+    el('circle', { cx: x(S.r), cy: y(cr), r: 5, fill: '#eb6834', stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+    txt(svg, x(S.r) + 7, y(cr) + 16, `${cr.toFixed(2)}M MACs`, { 'font-weight': 700, fill: '#0b0b0b' });
+    txt(svg, (m.l + W - m.r) / 2, H - 4, 'Rank', { 'text-anchor': 'middle', fill: '#0b0b0b' });
+    crosshair(svg, x, m, H, W, i => { const f = i * (S.di + S.dout) / 1e6; return `<b>rank ${i}</b><br>factorized: ${f.toFixed(2)}M MACs<br>dense: ${dense.toFixed(2)}M MACs<br>${f < dense ? 'saves ' + ((1 - f / dense) * 100).toFixed(1) + '%' : '<b>costs more than dense</b>'}`; });
+  }
+}
+function crosshair(svg, x, m, H, W, html) {
+  const line = el('line', { y1: m.t, y2: H - m.b, stroke: '#0b0b0b', 'stroke-width': 1, opacity: 0 }, svg);
+  const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+  const move = (cx, cy, evt) => {
+    const pt = svg.createSVGPoint(); pt.x = cx; pt.y = cy; const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const i = Math.max(1, Math.min(d, Math.round(x.inv(p.x))));
+    line.setAttribute('x1', x(i)); line.setAttribute('x2', x(i)); line.setAttribute('opacity', .35); showTip(evt, html(i));
+  };
+  hit.addEventListener('mousemove', e => move(e.clientX, e.clientY, e));
+  hit.addEventListener('touchmove', e => move(e.touches[0].clientX, e.touches[0].clientY, e.touches[0]), { passive: true });
+  hit.addEventListener('mouseleave', () => { line.setAttribute('opacity', 0); hideTip(); });
+}
+seg($('dSeg'), Object.entries(PRESETS).map(([k, v]) => [+k, v]), 2048, v => { d = v; draw(); });
+['alpha', 'beta', 'rho', 'gamma'].forEach(k => $(k).addEventListener('input', draw));
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Can an LLM out-optimize Vivado? Rewriting RTL for FPGA PPA · Fariza Siddiqua</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="../assets/viz.js"></script>
+<style>
+  .flow { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:6px 0 4px; }
+  .role { border:1.5px solid #d6d5cf; border-radius:10px; padding:10px 12px; background:#fff; cursor:pointer; text-align:left; font:inherit; color:inherit; }
+  .role:hover { border-color:#86b6ef; }
+  .role.on { border-color:#2a78d6; box-shadow:0 0 0 3px #e3eefb; }
+  .role .n { font-size:12px; color:#1c5cab; font-weight:700; }
+  .role .h { font-weight:700; }
+  .role .s { font-size:12.5px; color:var(--muted); line-height:1.4; margin-top:2px; }
+  .role-detail { margin-top:10px; border-radius:8px; background:#fff; border:1px solid var(--line); padding:12px 14px; font-size:13.5px; }
+  .role-detail .k { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin:6px 0 2px; }
+  .role-detail code { font-size:12.5px; background:#f6f6f4; padding:1px 5px; border-radius:4px; }
+  .loopnote { font-size:12.5px; color:var(--muted); margin-top:8px; }
+  .variant-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+  @media (max-width:640px) { .flow { grid-template-columns:1fr; } .variant-stats { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="../index.html">Home</a><a href="../blog.html" class="active">Blog</a><a href="../misc.html">Misc</a>
+  <a class="brand" href="../index.html">Fariza Siddiqua</a>
+</div></nav>
+<main><article>
+  <h1>Can an LLM out-optimize Vivado? Rewriting RTL for FPGA power, performance and area</h1>
+  <div class="meta">November 2026 · LLMs for hardware design · FPGA · ~7 min read</div>
+
+  <p class="lede">FPGA synthesis tools are very good at optimizing the circuit your RTL describes. They are not allowed to change <em>which</em> circuit
+  that is. I wanted to measure how much an LLM can gain by rewriting the RTL itself, on top of everything Vivado already does.</p>
+
+  <p>Vivado simplifies logic, removes redundant registers, retimes and replicates. Every one of those moves has to preserve the RTL's
+  cycle-level behaviour, its latencies and its reset semantics. Reusing one adder across cycles, swapping a shift-and-add multiplier for a DSP slice, or moving a stack from
+  flip-flops into LUTRAM all need a different RTL. Previous LLM work mostly asks <em>"is the generated Verilog correct?"</em>. This work asks
+  <em>"is the rewritten Verilog cheaper, after the vendor tool has done its best on both versions?"</em></p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v">14 / 14</div><div class="l">designs GPT-5.6 rewrote correctly</div></div>
+    <div class="kpi"><div class="v">−24.5%</div><div class="l">LUTs vs. Vivado's performance flow (geo-mean)</div></div>
+    <div class="kpi"><div class="v">−8.4%</div><div class="l">core dynamic power (geo-mean)</div></div>
+    <div class="kpi"><div class="v">−7.2%</div><div class="l">critical-path delay (geo-mean)</div></div>
+  </div>
+
+  <h3>The setup: three roles, real Vivado reports</h3>
+  <p>The LLM plays three separate roles. Each is its own request with its own prompt, and each sees only the previous role's output, not its reasoning.
+  All feedback comes from real post-route Vivado reports on an AMD Alveo U200. Click a role to see what it does:</p>
+
+  <figure>
+    <div class="fig-title">The analyzer → solver → reviewer loop</div>
+    <div class="fig-sub">Every rewritten design must pass three functional checks before its PPA counts.</div>
+    <div class="flow" id="flow"></div>
+    <div class="role-detail" id="roleDetail"></div>
+    <div class="loopnote">Verification = behavioural simulation with the design's self-checking testbench → differential random testing against the original RTL
+      (fixed seeds, randomized resets) → post-implementation simulation of the routed netlist. On failure, the error log goes back with a "fix only this" prompt, up to 3 attempts.</div>
+  </figure>
+
+  <p>The comparison is controlled. Four variants of every design go through Vivado 2025.2 at the same clock: the original RTL with the <strong>default</strong> flow,
+  the original with an aggressive <strong>performance-oriented</strong> flow, and the GPT-5.6 and Qwen3.8-27B rewrites with that same aggressive flow.
+  Because the last three share a flow, the gap between "Vivado Optimized" and an LLM variant is <strong>purely the effect of the rewrite</strong>.
+  Power comes from switching activity recorded under identical stimulus for every variant.</p>
+
+  <h3>Result 1: the tool alone barely moves the needle</h3>
+  <p>The first surprise is that the performance-oriented flow made things slightly <em>worse</em> on average, because it replicates logic to chase timing.
+  The LLM rewrites improve every metric:</p>
+
+  <figure>
+    <div class="fig-title">Geometric-mean improvement over Vivado Default</div>
+    <div class="fig-sub">Positive is better. Qwen3.8-27B is averaged over the 8 designs it completed, which excludes the hardest ones.</div>
+    <div class="chart" id="geo"></div>
+    <div class="legend"><span><i style="background:#9a9993"></i>Vivado Optimized (tool only)</span><span><i style="background:#2a78d6"></i>GPT-5.6 rewrite</span><span><i style="background:#eb6834"></i>Qwen3.8-27B rewrite</span></div>
+    <details class="table-view"><summary>Show as table</summary><div id="geoTable"></div></details>
+  </figure>
+
+  <p>Qwen's bigger bars come with a caveat. It passed verification on only <strong>8 of 14</strong> designs, failing on <code>div16</code>, <code>radix2div</code> and all
+  four industrial modules. On the same 8 designs, GPT-5.6 roughly matches it on LUTs (−33.3% vs. −32.7%) and delay (−6.3% vs. −5.7%). Qwen stays ahead on
+  dynamic power and flip-flops.</p>
+
+  <h3>Result 2: design by design</h3>
+  <p>The averages hide a lot of variety. Pick a metric and compare each rewrite against Vivado Optimized, the same flow on the original RTL:</p>
+
+  <figure>
+    <div class="fig-title">Change from rewriting, per design</div>
+    <div class="fig-sub">Reduction vs. Vivado Optimized (%). Right of zero = the rewrite is better; left = a regression. ✕ = failed verification within 3 attempts.</div>
+    <div class="controls"><span class="seg" id="metSeg"></span></div>
+    <div class="chart" id="per"></div>
+    <div class="legend"><span><i style="background:#2a78d6;border-radius:50%"></i>GPT-5.6</span><span><i style="background:#eb6834;border-radius:50%"></i>Qwen3.8-27B</span></div>
+    <details class="table-view"><summary>Show raw post-route numbers</summary><div id="perTable"></div></details>
+  </figure>
+
+  <p>Most of the gains come from mapping logic onto the FPGA's dedicated resources, which the tool can't do without permission to change the RTL:</p>
+  <ul>
+    <li><strong>multpipe8:</strong> GPT-5.6 moved the multiply into a DSP slice. LUTs dropped from 86 to 43, FFs from 92 to 45, and dynamic power fell 39%.</li>
+    <li><strong>LIFO:</strong> the stack moved into four LUTRAMs, giving 45% fewer LUTs and 68% fewer FFs, but 19% more delay.</li>
+    <li><strong>div16:</strong> LUTs went from 755 to 422 and delay fell from 20.7 to 16.6 ns.</li>
+    <li><strong>ibex_multdiv_fast</strong> (industrial): the aggressive flow alone made it bigger and slower. GPT-5.6's rewrite cut power by 29% and FFs by 41%.</li>
+  </ul>
+  <p>Not every rewrite helps. In <code>multi16</code>, GPT-5.6 cut LUTs by 31% but raised dynamic power from 0.78 to 1.27 mW. In <code>multbooth8</code>, Qwen pushed the whole
+  multiplier into a DSP slice and used <em>more</em> power. That is why the reviewer works from measured numbers, not the model's own estimates.</p>
+
+  <h3>Result 3: two very different ideas of "optimized"</h3>
+  <p>The RTLLM <code>multi_16bit</code> shift-and-add multiplier shows how differently the two models think. The original picks one bit of <em>a</em> each cycle and
+  adds <em>b</em> shifted by a variable amount, <em>i−1</em>. That variable shifter accounts for most of the 93 LUTs.</p>
+
+  <figure>
+    <div class="fig-title">multi_16bit: three architectures</div>
+    <div class="fig-sub">Simplified block diagrams of each version.</div>
+    <div class="controls"><span class="seg" id="varSeg"></span></div>
+    <div class="chart" id="arch"></div>
+    <div class="variant-stats" id="varStats"></div>
+    <figcaption id="varNote"></figcaption>
+  </figure>
+
+  <p>GPT-5.6 kept the algorithm and its exact 17-cycle timing, and just removed the expensive part. Qwen replaced the algorithm entirely: it is far smaller
+  and 2 cycles instead of 17, but <strong>not cycle-equivalent</strong>. It passes the testbench, yet it is only usable if the surrounding system tolerates the latency change.
+  Whether that counts as "correct" depends on your interface contract. Formal equivalence checking is the next thing I want in this loop.</p>
+
+  <div class="callout"><strong>Where LLMs didn't help.</strong> On <code>ibex_alu</code> and <code>axil2apb</code>, GPT-5.6 made no meaningful structural change, because the RTL was already
+    close to what Vivado maps well. The Ibex register file was returned unchanged. The known FPGA-friendly version drops the reset on the storage array, and that changes reset
+    behaviour, which the flow forbids. The LLM correctly declined to do it.</div>
+
+  <h3>Takeaways</h3>
+  <ul>
+    <li><strong>LLM rewriting complements the tool rather than replacing it.</strong> Gains come from structural changes (DSP, LUTRAM, shared arithmetic, merged registers)
+      that the tool isn't allowed to make.</li>
+    <li><strong>Reliability vs. aggressiveness.</strong> The proprietary model was reliable on every design. The local, 4-bit open-weight model was bolder on small designs
+      but failed on the large ones. A model that keeps design IP on-site is attractive, but only once that gap closes.</li>
+    <li><strong>Measure, don't trust.</strong> Some rewrites regressed power or delay. Post-route measurement and multi-stage verification are not optional.</li>
+  </ul>
+
+  <p class="muted" style="font-size:13.5px">Paper: F. Siddiqua and M. M. H. Shuvo, <em>Rewriting RTL: What LLMs Add Beyond the Tool</em> (submitted to IEEE Design &amp; Test).
+    An earlier version of this flow placed 2nd in the ICCD 2025 LLMs for Hardware Design Challenge.
+    Code: <a href="https://github.com/fariza1743/LLM-Assisted-RTL-Cleanup-for-FPGA-PPA">github.com/fariza1743/LLM-Assisted-RTL-Cleanup-for-FPGA-PPA</a>.</p>
+
+  <a class="back" href="../blog.html">&larr; All posts</a>
+</article></main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* ---------- roles ---------- */
+const ROLES = [
+  ['①', 'Analyzer', 'Finds RTL-fixable PPA drawbacks', 'Original RTL + baseline Vivado utilization, timing and power reports.',
+   'A JSON list of drawbacks, each with <code>location</code>, <code>evidence</code> from the reports, <code>suggested_fix</code>, <code>impact</code> and <code>risk</code>.',
+   'Analyze only, never write RTL. Ignore anything a constraint or tool setting could fix. If nothing is fixable in RTL, stop and keep the original.'],
+  ['②', 'Solver', 'Rewrites RTL, same interface', 'Original RTL + the analyzer\'s drawback list.',
+   'Complete rewritten RTL + a JSON changelog marking each drawback fixed / partially fixed / skipped, with its trade-off.',
+   'Highest-impact fixes first, exact functionality and module interface preserved. Then 3-stage verification with up to 3 error-fix attempts.'],
+  ['③', 'Reviewer', 'Checks measured results', 'Both RTLs + a measured post-route PPA comparison (Vivado Optimized vs. Solver).',
+   'A JSON review + improved RTL, or <code>NO_CHANGE</code>.',
+   'Verifies each fix actually helped, hunts for regressions and new opportunities. Any new RTL goes through the same verification loop.']
+];
+function showRole(i) {
+  [...$('flow').children].forEach((c, j) => c.classList.toggle('on', i === j));
+  const r = ROLES[i];
+  $('roleDetail').innerHTML = `<div class="k">Input</div>${r[3]}<div class="k">Output</div>${r[4]}<div class="k">Rules</div>${r[5]}`;
+}
+ROLES.forEach((r, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'role';
+  b.innerHTML = `<div class="n">${r[0]} ${i < 2 ? '→' : ''}</div><div class="h">${r[1]}</div><div class="s">${r[2]}</div>`;
+  b.onclick = () => showRole(i); $('flow').appendChild(b);
+});
+showRole(0);
+
+/* ---------- geo-mean (Fig. 2) ---------- */
+const MET = ['Dynamic power', 'LUTs', 'Flip-flops', 'Critical-path delay'];
+const GEO = [['Vivado Optimized', '#9a9993', [-3.7, -8.1, -0.7, -2.4]], ['GPT-5.6', '#2a78d6', [5.1, 18.4, 26.0, 5.0]], ['Qwen3.8-27B', '#eb6834', [10.2, 25.9, 65.3, 6.8]]];
+(function () {
+  const W = 680, H = 280, m = { l: 44, r: 10, t: 14, b: 34 };
+  const svg = svgRoot($('geo'), W, H), y = scale(-15, 70, H - m.b, m.t);
+  niceTicks(-10, 70, 8).forEach(t => { el('line', { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), stroke: t === 0 ? '#9a9993' : '#ecebe7' }, svg); txt(svg, m.l - 6, y(t) + 4, t + '%', { 'text-anchor': 'end', 'font-size': 11 }); });
+  const gw = (W - m.l - m.r) / 4, bw = 34, gap = 2;
+  MET.forEach((name, mi) => {
+    const cx = m.l + gw * mi + gw / 2;
+    txt(svg, cx, H - 10, name, { 'text-anchor': 'middle', fill: '#0b0b0b' });
+    GEO.forEach(([s, c, v], si) => {
+      const x = cx - (3 * bw + 2 * gap) / 2 + si * (bw + gap), val = v[mi];
+      el('path', { d: barPath(x, y(0), bw, y(val)), fill: c }, svg);
+      txt(svg, x + bw / 2, val >= 0 ? y(val) - 5 : y(val) + 13, (val > 0 ? '+' : '') + val, { 'text-anchor': 'middle', 'font-size': 11, fill: '#0b0b0b' });
+      const hit = el('rect', { x, y: m.t, width: bw, height: H - m.b - m.t, fill: 'transparent' }, svg);
+      hover(hit, () => `<b>${s}</b> · ${name}<br>${val > 0 ? val + '% better' : Math.abs(val) + '% worse'} than Vivado Default`);
+    });
+  });
+  $('geoTable').innerHTML = '<table><tr><th>Variant</th>' + MET.map(x => `<th>${x}</th>`).join('') + '</tr>' + GEO.map(([s, , v]) => `<tr><td>${s}</td>${v.map(x => `<td>${x}%</td>`).join('')}</tr>`).join('') + '</table>';
+})();
+
+/* ---------- per-design (Table II) [CDP mW, LUT, FF, delay ns]; 0 = '–' ; null = failed ---------- */
+const D = [
+  ['ICCD', 'accu', [0.690,13,13,0.797], [0.770,14,13,0.852], [0.653,13,13,1.426], [0.648,13,13,1.426]],
+  ['ICCD', 'comparator4', [0.437,5,3,2.371], [0.437,5,3,2.371], [0.418,5,3,2.124], [0.418,5,3,2.124]],
+  ['ICCD', 'seqdec', [0.459,5,5,3.000], [0.448,6,5,2.466], [0.372,2,3,1.029], [0.331,4,5,1.097]],
+  ['RTLLM', 'adder16', [0.739,16,0,5.701], [0.733,16,0,5.697], [0.644,16,0,4.861], [0.644,16,0,4.861]],
+  ['RTLLM', 'div16', [11.798,762,0,20.607], [10.757,755,0,20.690], [10.866,422,0,16.576], null],
+  ['RTLLM', 'radix2div', [0.482,60,33,5.662], [0.419,64,33,5.629], [0.435,67,32,5.247], null],
+  ['RTLLM', 'multi16', [0.622,93,70,3.299], [0.780,97,70,4.041], [1.267,67,54,3.654], [0.709,18,35,3.774]],
+  ['RTLLM', 'LIFO', [0.542,16,25,2.814], [0.518,20,25,2.246], [0.477,11,8,2.674], [0.483,11,7,3.069]],
+  ['RTLLM', 'multbooth8', [0.942,73,86,3.441], [1.198,74,86,3.412], [0.933,62,70,4.002], [1.578,0,1,3.194]],
+  ['RTLLM', 'multpipe8', [1.011,74,92,2.948], [1.107,86,92,3.146], [0.671,43,45,2.772], [0.444,85,34,2.904]],
+  ['Industrial', 'ibex_alu', [47.516,258,0,7.960], [49.278,255,0,7.913], [47.516,258,0,7.960], null],
+  ['Industrial', 'ibex_multdiv_fast', [2.083,468,75,1.692], [2.276,542,81,2.132], [1.606,453,48,2.051], null],
+  ['Industrial', 'ibex_regfile', [5.562,607,992,1.203], [5.562,607,992,1.203], [5.562,607,992,1.203], null],
+  ['Industrial', 'axil2apb', [1.100,83,214,1.233], [1.125,103,214,1.512], [1.100,83,214,1.233], null]
+];
+const UNITS = [' mW', ' LUTs', ' FFs', ' ns'];
+function drawPer(mi) {
+  const W = 680, rowH = 25, gapG = 22, m = { l: 150, r: 24, t: 20, b: 38 };
+  const H = m.t + D.length * rowH + 2 * gapG + m.b;
+  const svg = svgRoot($('per'), W, H), x = scale(-70, 100, m.l, W - m.r);
+  el('rect', { x: x(0), y: m.t, width: x(100) - x(0), height: H - m.t - m.b, fill: '#f3f8fe' }, svg);
+  niceTicks(-60, 100, 8).forEach(t => { el('line', { x1: x(t), x2: x(t), y1: m.t, y2: H - m.b, stroke: t === 0 ? '#9a9993' : '#ecebe7' }, svg); txt(svg, x(t), H - m.b + 15, t + '%', { 'text-anchor': 'middle', 'font-size': 11 }); });
+  txt(svg, x(-35), H - 6, '← regression', { 'text-anchor': 'middle', 'font-size': 11.5 });
+  txt(svg, x(50), H - 6, 'better than Vivado Optimized →', { 'text-anchor': 'middle', 'font-size': 11.5, fill: '#1c5cab' });
+  let y = m.t, last = '';
+  D.forEach(([suite, name, def, opt, gpt, qw]) => {
+    let first = false;
+    if (suite !== last) { if (last) y += gapG; last = suite; first = true; }
+    const cy = y + rowH / 2, base = opt[mi];
+    if (first) txt(svg, 4, y - 4, suite.toUpperCase(), { 'font-weight': 700, fill: '#7a7974', 'font-size': 10.5, 'letter-spacing': '.06em' });
+    txt(svg, m.l - 10, cy + 4, name, { 'text-anchor': 'end', 'font-size': 12 });
+    const red = v => base === 0 ? null : (base - v) / base * 100;
+    const pts = [[gpt, '#2a78d6', 'GPT-5.6'], [qw, '#eb6834', 'Qwen3.8-27B']].map(([v, c, n]) => ({ v, c, n, r: v ? red(v[mi]) : null }));
+    const valid = pts.filter(p => p.r !== null);
+    if (valid.length === 2) el('line', { x1: x(valid[0].r), x2: x(valid[1].r), y1: cy, y2: cy, stroke: '#d6d5cf', 'stroke-width': 2 }, svg);
+    const close = valid.length === 2 && Math.abs(valid[0].r - valid[1].r) < 3;
+    pts.forEach((p, k) => {
+      const py = close ? cy + (k ? 4 : -4) : cy;
+      if (!p.v) { txt(svg, W - m.r + 2 - (k ? 0 : 12), py + 4, '✕', { 'text-anchor': 'end', fill: p.c, 'font-weight': 700 }); return; }
+      if (p.r === null) { if (k === 0) txt(svg, x(0) + 6, cy + 4, 'n/a (no FFs)', { 'font-size': 10.5, fill: '#9a9993' }); return; }
+      const cx = x(Math.max(-70, p.r));
+      el('circle', { cx, cy: py, r: 5.5, fill: p.c, stroke: '#fcfcfb', 'stroke-width': 2 }, svg);
+      const hit = el('circle', { cx, cy: py, r: 12, fill: 'transparent' }, svg);
+      hover(hit, () => `<b>${name} · ${p.n}</b><br>${MET[mi]}: ${opt[mi]}${UNITS[mi]} → ${p.v[mi]}${UNITS[mi]}<br>${p.r >= 0 ? p.r.toFixed(1) + '% better' : Math.abs(p.r).toFixed(1) + '% worse'} than Vivado Optimized`);
+    });
+    y += rowH;
+  });
+  const f = (a) => a ? a.map((v, i) => i === 0 || i === 3 ? v.toFixed(3) : v).join(' / ') : 'failed';
+  $('perTable').innerHTML = '<table><tr><th>Design</th><th>Vivado Default</th><th>Vivado Optimized</th><th>GPT-5.6</th><th>Qwen3.8-27B</th></tr>' +
+    D.map(r => `<tr><td>${r[1]}</td><td>${f(r[2])}</td><td>${f(r[3])}</td><td>${f(r[4])}</td><td>${f(r[5])}</td></tr>`).join('') +
+    '</table><div style="margin-top:4px">Each cell: dynamic power (mW) / LUTs / FFs / delay (ns). Post-route, AMD Alveo U200, Vivado 2025.2.</div>';
+}
+seg($('metSeg'), MET.map((n, i) => [i, n]), 1, drawPer);
+drawPer(1);
+
+/* ---------- multi_16bit architectures ---------- */
+const VAR = {
+  orig: { stats: [['93', 'LUTs'], ['70', 'flip-flops'], ['93', 'cells'], ['17', 'cycles latency']],
+          note: 'Original: a 5-bit counter i selects bit a[i−1] each cycle; b is shifted by a variable amount (i−1) before being accumulated. The variable shifter and bit-select dominate the LUT count.' },
+  gpt:  { stats: [['67', 'LUTs'], ['54', 'flip-flops'], ['109', 'cells'], ['17', 'cycles latency']],
+          note: 'GPT-5.6: same algorithm, same 17-cycle timing. The variable shifter is replaced by a register breg_shift that shifts by one position every cycle, a cheap fixed wire shift. Cycle-equivalent.' },
+  qwen: { stats: [['18', 'LUTs'], ['35', 'flip-flops'], ['71', 'cells'], ['2', 'cycles latency']],
+          note: 'Qwen3.8-27B: throws away shift-and-add entirely. One multiply operator plus a 1-bit "active" flag. Passes the testbench, but latency changes from 17 to 2 cycles, so it is not cycle-equivalent.' }
+};
+function box(svg, x, y, w, h, label, opt = {}) {
+  el('rect', { x, y, width: w, height: h, rx: 6, fill: opt.fill || '#fff', stroke: opt.stroke || '#9a9993', 'stroke-width': opt.sw || 1.5 }, svg);
+  label.split('\n').forEach((l, i, a) => txt(svg, x + w / 2, y + h / 2 + 4 + (i - (a.length - 1) / 2) * 14, l, { 'text-anchor': 'middle', fill: '#0b0b0b', 'font-size': 12, 'font-weight': opt.bold ? 700 : 400 }));
+}
+function arrow(svg, x1, y1, x2, y2, c = '#52514e') {
+  el('line', { x1, y1, x2, y2, stroke: c, 'stroke-width': 1.6 }, svg);
+  const a = Math.atan2(y2 - y1, x2 - x1), s = 7;
+  el('path', { d: `M${x2},${y2}L${x2 - s * Math.cos(a - .4)},${y2 - s * Math.sin(a - .4)}L${x2 - s * Math.cos(a + .4)},${y2 - s * Math.sin(a + .4)}Z`, fill: c }, svg);
+}
+function drawArch(v) {
+  const W = 680, H = 230, svg = svgRoot($('arch'), W, H);
+  const hot = { fill: '#fdeee6', stroke: '#eb6834', sw: 2, bold: true }, good = { fill: '#e8f1fc', stroke: '#2a78d6', sw: 2, bold: true }, reg = { fill: '#f3f2ee' };
+  txt(svg, 20, 40, 'a[15:0]', { 'font-size': 12, fill: '#0b0b0b' }); txt(svg, 20, 150, 'b[15:0]', { 'font-size': 12, fill: '#0b0b0b' });
+  if (v === 'qwen') {
+    box(svg, 80, 20, 90, 40, 'a_reg', reg); box(svg, 80, 130, 90, 40, 'b_reg', reg);
+    arrow(svg, 66, 40, 80, 40); arrow(svg, 66, 150, 80, 150);
+    box(svg, 250, 65, 110, 60, '× multiply\n(RTL_MULT)', good);
+    arrow(svg, 170, 40, 250, 85); arrow(svg, 170, 150, 250, 105);
+    box(svg, 430, 70, 110, 50, 'product_r', reg); arrow(svg, 360, 95, 430, 95);
+    arrow(svg, 540, 95, 600, 95); txt(svg, 606, 99, 'y[31:0]', { 'font-size': 12, fill: '#0b0b0b' });
+    box(svg, 250, 170, 110, 40, '1-bit active flag', reg);
+    txt(svg, 430, 196, 'done after 2 cycles', { 'font-size': 12, fill: '#b5461b', 'font-weight': 700 });
+    return;
+  }
+  box(svg, 80, 20, 90, 40, 'a_reg', reg); arrow(svg, 66, 40, 80, 40);
+  box(svg, 220, 20, 110, 40, 'bit select\na[i−1]', v === 'orig' ? hot : {});
+  arrow(svg, 170, 40, 220, 40);
+  if (v === 'orig') {
+    box(svg, 80, 130, 90, 40, 'b_reg', reg); arrow(svg, 66, 150, 80, 150);
+    box(svg, 220, 122, 110, 56, 'variable shift\nb << (i−1)', hot); arrow(svg, 170, 150, 220, 150);
+  } else {
+    box(svg, 80, 122, 110, 56, 'breg_shift\nreg, <<1 / cycle', good); arrow(svg, 66, 150, 80, 150);
+    el('path', { d: 'M135,178 C135,205 60,205 60,178', fill: 'none', stroke: '#2a78d6', 'stroke-width': 1.6 }, svg);
+    txt(svg, 98, 214, 'shift by 1', { 'font-size': 11, fill: '#1c5cab', 'text-anchor': 'middle' });
+    arrow(svg, 190, 150, 380, 108);
+  }
+  box(svg, 380, 75, 60, 50, 'AND\n+', {}); arrow(svg, 330, 40, 380, 92); if (v === 'orig') arrow(svg, 330, 150, 380, 108);
+  box(svg, 480, 75, 80, 50, 'yout_r\n(acc)', reg); arrow(svg, 440, 100, 480, 100);
+  el('path', { d: 'M520,75 C520,52 410,52 410,75', fill: 'none', stroke: '#52514e', 'stroke-width': 1.4 }, svg);
+  arrow(svg, 560, 100, 610, 100); txt(svg, 614, 104, 'y[31:0]', { 'font-size': 12, fill: '#0b0b0b' });
+  box(svg, 380, 160, 180, 36, 'counter i: 0 → 17', reg);
+  txt(svg, 470, 218, 'done after 17 cycles', { 'text-anchor': 'middle', 'font-size': 12, fill: '#52514e', 'font-weight': 700 });
+}
+function showVar(v) {
+  drawArch(v);
+  $('varStats').innerHTML = VAR[v].stats.map(([a, b]) => `<div class="kpi"><div class="v" style="font-size:22px">${a}</div><div class="l">${b}</div></div>`).join('');
+  $('varNote').textContent = VAR[v].note;
+}
+seg($('varSeg'), [['orig', 'Original'], ['gpt', 'GPT-5.6 rewrite'], ['qwen', 'Qwen3.8-27B rewrite']], 'orig', showVar);
+showVar('orig');
+</script>
+</body>
+</html>
