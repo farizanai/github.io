@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Misc · Fariza Siddiqua</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="index.html">Home</a><a href="blog.html">Blog</a><a href="misc.html" class="active">Misc</a>
+  <a class="brand" href="index.html">Fariza Siddiqua</a>
+</div></nav>
+<main>
+  <h1>Misc</h1>
+  <p class="muted">Photos from conferences and life, plus things from before my Ph.D. Things from before my Ph.D. &mdash; undergraduate competitions and projects, teaching, clubs, and a few photos.mdash; undergraduate competitions, projects, teaching and clubs.</p>
+
+  <h2>Photos &amp; Moments</h2>
+  <!-- To add a photo: put the image in assets/photos/ and copy one <figure> block below. -->
+  <div class="gallery">
+    <figure><img src="assets/photos/embc-2026-toronto.jpg" alt="Fariza with fellow presenters in front of the IEEE EMBC 2026 welcome screen in Toronto" loading="lazy">
+      <figcaption><strong>IEEE EMBC 2026</strong>, Toronto &mdash; with fellow presenters after the session on &ldquo;Personalized Digital Health&rdquo;.</figcaption></figure>
+    <figure><img src="assets/photos/wiml-neurips-2025-poster.jpg" alt="Fariza standing next to her Conv-GRU Temporal Refiner poster at WiML, NeurIPS 2025" loading="lazy">
+      <figcaption><strong>WiML @ NeurIPS 2025</strong> &mdash; presenting the Conv-GRU Temporal Refiner poster.</figcaption></figure>
+    <figure><img src="assets/photos/neurips-2025-expo.jpg" alt="Fariza at the NeurIPS 2025 exhibition booths" loading="lazy">
+      <figcaption><strong>NeurIPS 2025</strong> &mdash; exhibition booths.</figcaption></figure>
+    <figure><img src="assets/photos/off-the-clock.jpg" alt="Fariza sitting on a tree branch at golden hour" loading="lazy">
+      <figcaption>Doing research to actually do these&hellip;</figcaption></figure>
+  </div>
+  <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer"><img alt=""><div class="lb-cap"></div><button type="button" aria-label="Close">&times;</button></div>
+  <script>
+    (function () {
+      const lb = document.getElementById('lightbox'), img = lb.querySelector('img'), cap = lb.querySelector('.lb-cap');
+      document.querySelectorAll('.gallery figure').forEach(f => f.addEventListener('click', () => {
+        const i = f.querySelector('img'); img.src = i.src; img.alt = i.alt; cap.innerHTML = f.querySelector('figcaption').innerHTML; lb.classList.add('open');
+      }));
+      const close = () => lb.classList.remove('open');
+      lb.addEventListener('click', e => { if (e.target !== img) close(); });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+    })();
+  </script>
+
+  <h2>Undergraduate Competitions</h2>
+  <div class="entries">
+    <div class="e"><div class="when">Nov 2021</div><div class="what"><strong>Finalist</strong>, BIKIRON &mdash; Sustainable and Renewable Energy Development Authority, Bangladesh · <a href="https://github.com/fariza1743/BIKIRON-Project">Project</a></div></div>
+    <div class="e"><div class="when">Mar 2021</div><div class="what"><strong>Champion</strong>, Project Tech Tussle &mdash; IEEE Computer Society BRACU · <a href="https://github.com/fariza1743/Meena-Pregnenacy-Tracking-App">Meena pregnancy-tracking app</a></div></div>
+    <div class="e"><div class="when">Mar 2021</div><div class="what"><strong>1st Runner Up</strong>, BdOSN DevMania Project Competition · <a href="https://github.com/fariza1743/Meena-Pregnenacy-Tracking-App">Meena pregnancy-tracking app</a></div></div>
+  </div>
+
+  <h2>Undergraduate Projects</h2>
+  <div class="cards">
+    <div class="proj">
+      <div class="t"><a href="https://github.com/fariza1743/PhonoTrack--BME-Project">PhonoTrack</a></div>
+      <div class="stack">Continuous heart-rate &amp; BP monitor from PCG · MATLAB</div>
+      <ul><li>Built a hardware prototype and a heart-sound dataset</li><li>Signal processing to estimate heart rate and blood pressure</li></ul>
+    </div>
+    <div class="proj">
+      <div class="t"><a href="https://github.com/fariza1743/Vehicle-Speed-Detection-Using-CNN">Vehicle Speed Detection from Video</a></div>
+      <div class="stack">CNN-based detection · MATLAB</div>
+      <ul><li>Built a dataset and implemented YOLOv2 for detection</li></ul>
+    </div>
+    <div class="proj">
+      <div class="t"><a href="https://github.com/fariza1743/Solar-Powered-Environment-Monitoring-System-Using-GSM-Module">Solar-Powered Environment Monitor</a></div>
+      <div class="stack">GSM telemetry · Arduino IDE, ThingSpeak</div>
+      <ul><li>Self-powered sensing node reporting over GSM</li></ul>
+    </div>
+    <div class="proj">
+      <div class="t"><a href="https://github.com/fariza1743/Home-Automation-Using-NodeMCU-and-4-Channel-Relay">Home Automation</a></div>
+      <div class="stack">NodeMCU + 4-channel relays · Arduino IDE, Blynk API</div>
+      <ul><li>Control AC appliances from a phone</li></ul>
+    </div>
+  </div>
+
+  <h2>Teaching, Clubs &amp; Exposure</h2>
+  <div class="entries">
+    <div class="e"><div class="when">2022/12 – 2023/05</div><div class="what"><strong>Volunteer</strong>, Research and Innovation Center for Science and Engineering (RISE), BUET</div></div>
+    <div class="e"><div class="when">2022/11</div><div class="what"><strong>Industrial tour</strong>, Bangabandhu Satellite Base Station</div></div>
+    <div class="e"><div class="when">2021/11 – 2023/05</div><div class="what"><strong>Organizing Secretary</strong>, BUET Brain Teaser Club</div></div>
+    <div class="e"><div class="when">2020/09 – 2021/02</div><div class="what"><strong>Instructor</strong>, 10 Minute School (EdTech) &mdash; published 60 video lectures</div></div>
+  </div>
+
+  <h2>Skills &amp; Coursework</h2>
+  <div class="grid2">
+    <dl class="skills">
+      <dt>Languages</dt><dd>C++, Python, Verilog</dd>
+      <dt>Deep learning</dt><dd>PyTorch</dd>
+      <dt>EDA &amp; hardware</dt><dd>Vivado, Vitis, Synopsys, Cadence Virtuoso, Xilinx FPGA</dd>
+      <dt>Other</dt><dd>AutoCAD, MS Excel</dd>
+    </dl>
+    <div>
+      <strong>Graduate</strong>
+      <ul><li>Introduction to VLSI</li><li>Security in Cyber-Physical Systems</li><li>Computer Architecture I</li><li>Hardware for Neural Networks</li><li>Efficient Deep Learning Acceleration</li><li>Foundations of Deep Learning</li></ul>
+      <strong style="display:block;margin-top:10px">Undergraduate</strong>
+      <ul><li>Biomedical Instrumentation &amp; Measurement</li><li>Wireless Communications</li><li>Continuous Signals &amp; Linear Systems</li><li>Digital Electronics · Control Systems I</li></ul>
+    </div>
+  </div>
+
+  <footer>Last updated November 2026</footer>
+</main>
+</body>
+</html>

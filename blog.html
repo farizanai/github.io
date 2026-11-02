@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog · Fariza Siddiqua</title>
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<nav class="topnav"><div class="inner">
+  <a href="index.html">Home</a><a href="blog.html" class="active">Blog</a><a href="misc.html">Misc</a>
+  <a class="brand" href="index.html">Fariza Siddiqua</a>
+</div></nav>
+<main>
+  <h1>Blog</h1>
+  <p class="muted">Interactive, visual write-ups of my research. Hover, toggle and drag inside the figures.</p>
+
+  <a class="post-card" href="blog/rtl-rewriting.html">
+    <div class="thumb"><svg viewBox="0 0 170 110">
+      <line x1="20" y1="94" x2="160" y2="94" stroke="#d6d5cf"/>
+      <rect x="22" y="58" width="16" height="36" rx="3" fill="#9a9993"/><rect x="40" y="38" width="16" height="56" rx="3" fill="#2a78d6"/><rect x="58" y="28" width="16" height="66" rx="3" fill="#eb6834"/>
+      <rect x="96" y="66" width="16" height="28" rx="3" fill="#9a9993"/><rect x="114" y="48" width="16" height="46" rx="3" fill="#2a78d6"/><rect x="132" y="12" width="16" height="82" rx="3" fill="#eb6834"/>
+      <text x="48" y="106" text-anchor="middle" font-size="9" fill="#52514e" font-family="Lato">LUTs</text><text x="122" y="106" text-anchor="middle" font-size="9" fill="#52514e" font-family="Lato">FFs</text>
+    </svg></div>
+    <div>
+      <div class="pc-title">Can an LLM out-optimize Vivado? Rewriting RTL for FPGA PPA</div>
+      <div class="pc-meta">November 2026 · LLMs for hardware design · FPGA</div>
+      <p class="pc-desc">Vivado can't change the circuit your RTL describes, but an LLM can. Three LLM roles, real post-route reports, and 14 designs show how much rewriting adds on top of the tool.</p>
+    </div>
+  </a>
+
+  <a class="post-card" href="blog/resplin.html">
+    <div class="thumb"><svg viewBox="0 0 170 110">
+      <g transform="translate(14,22)">
+        <rect x="0" y="0" width="7" height="34" rx="2" fill="#3b3a36"/><rect x="9" y="0" width="7" height="34" rx="2" fill="#3b3a36"/>
+        <rect x="18" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="27" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="36" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="45" y="0" width="7" height="34" rx="2" fill="#2a78d6"/>
+        <rect x="54" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="63" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="72" y="0" width="7" height="34" rx="2" fill="#2a78d6"/><rect x="81" y="0" width="7" height="34" rx="2" fill="#2a78d6"/>
+        <rect x="90" y="0" width="7" height="34" rx="2" fill="#eb6834"/><rect x="99" y="0" width="7" height="34" rx="2" fill="#eb6834"/><rect x="108" y="0" width="7" height="34" rx="2" fill="#eb6834"/><rect x="117" y="0" width="7" height="34" rx="2" fill="#eb6834"/>
+        <rect x="126" y="0" width="7" height="34" rx="2" fill="#3b3a36"/><rect x="135" y="0" width="7" height="34" rx="2" fill="#3b3a36"/>
+      </g>
+      <text x="85" y="80" text-anchor="middle" font-size="11" fill="#52514e" font-family="Lato">Root · Stem · Cap</text>
+    </svg></div>
+    <div>
+      <div class="pc-title">Fewer parameters, fewer joules? Inside ReSPLIN</div>
+      <div class="pc-meta">November 2026 · LLM compression · energy</div>
+      <p class="pc-desc">Pruning doesn't automatically save energy. I measured it on a GPU and built a region-wise compressor whose savings show up on the power meter, with no retraining.</p>
+    </div>
+  </a>
+
+  <a class="post-card" href="blog/capsvd-rank.html">
+    <div class="thumb"><svg viewBox="0 0 170 110">
+      <line x1="14" y1="40" x2="156" y2="40" stroke="#3b3a36" stroke-width="2"/>
+      <line x1="14" y1="92" x2="156" y2="12" stroke="#2a78d6" stroke-width="2"/>
+      <rect x="99" y="8" width="57" height="88" fill="#000" opacity=".05"/>
+      <line x1="62" y1="8" x2="62" y2="96" stroke="#eb6834" stroke-width="2"/>
+      <circle cx="62" cy="65" r="4" fill="#eb6834"/>
+      <text x="20" y="104" font-size="10" fill="#52514e" font-family="Lato">rank →</text>
+    </svg></div>
+    <div>
+      <div class="pc-title">When does low-rank actually pay? The CapSVD rank rule</div>
+      <div class="pc-meta">November 2026 · interactive explainer</div>
+      <p class="pc-desc">Two matrix multiplies aren't always cheaper than one. Drag the sliders to see how effective rank, the parameter target and a break-even guard decide the rank.</p>
+    </div>
+  </a>
+
+  <a class="post-card" href="blog/conv-gru.html">
+    <div class="thumb"><svg viewBox="0 0 170 110">
+      <rect x="44" y="8" width="70" height="90" fill="#e7f6ef"/>
+      <g stroke="#86b6ef" stroke-width="5" stroke-linecap="round">
+        <line x1="40" y1="20" x2="100" y2="20"/><line x1="56" y1="34" x2="122" y2="34"/><line x1="36" y1="48" x2="92" y2="48"/>
+        <line x1="70" y1="62" x2="140" y2="62"/><line x1="44" y1="76" x2="104" y2="76"/><line x1="60" y1="90" x2="128" y2="90"/>
+      </g>
+      <g fill="#1c5cab"><circle cx="70" cy="20" r="4"/><circle cx="89" cy="34" r="4"/><circle cx="64" cy="48" r="4"/><circle cx="105" cy="62" r="4"/><circle cx="74" cy="76" r="4"/><circle cx="94" cy="90" r="4"/></g>
+    </svg></div>
+    <div>
+      <div class="pc-title">An 80 kB model for mealtime insulin decisions</div>
+      <div class="pc-meta">November 2026 · ML for health · IEEE EMBC 2026</div>
+      <p class="pc-desc">A temporally regularised Conv-GRU recommends bolus and carbs for people with Type 1 diabetes. It is personalised per patient and small enough for a phone.</p>
+    </div>
+  </a>
+
+  <footer>Last updated November 2026</footer>
+</main>
+</body>
+</html>
